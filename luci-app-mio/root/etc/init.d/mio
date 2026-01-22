@@ -1,0 +1,165 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG="/usr/bin/ssserver"
+RUNTIME_DIR="/var/etc"
+RUNTIME_CONFIG="${RUNTIME_DIR}/mio.json"
+LOG_LEVEL="info"
+GLOBAL_SECTION="global"
+SERVER_SECTION="server"
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+log() {
+	logger -t mio "$1"
+}
+
+is_port_valid() {
+	case "$1" in
+		''|*[!0-9]*)
+			return 1
+			;;
+	esac
+	[ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+bool_value() {
+	case "$1" in
+		1|true|yes|on)
+			echo 1
+			;;
+		*)
+			echo 0
+			;;
+	esac
+}
+
+build_runtime_config() {
+	local section="$1"
+	local server server_port method password obfs_mode obfs_host mode fast_open timeout
+
+	[ -n "$section" ] || section="$SERVER_SECTION"
+
+	config_get server "$section" server "0.0.0.0"
+	config_get server_port "$section" server_port "8388"
+	config_get method "$section" method "2022-blake3-aes-128-gcm"
+	config_get password "$section" password
+	config_get obfs_mode "$section" obfs_mode "disable"
+	config_get obfs_host "$section" obfs_host
+	config_get mode "$section" mode "tcp_and_udp"
+	config_get fast_open "$section" fast_open "0"
+	config_get timeout "$section" timeout "300"
+
+	case "$obfs_mode" in
+		http|tls|disable)
+			;;
+		*)
+			log "Invalid obfs_mode: $obfs_mode"
+			obfs_mode="disable"
+			;;
+	esac
+
+	if [ -z "$password" ]; then
+		log "Password is required"
+		return 1
+	fi
+
+	if ! is_port_valid "$server_port"; then
+		log "Invalid server_port: $server_port"
+		return 1
+	fi
+
+	case "$obfs_mode" in
+		http|tls)
+			if ! command -v obfs-server >/dev/null 2>&1; then
+				log "obfs-server not found, please install simple-obfs-server"
+				return 1
+			fi
+			;;
+	esac
+
+	mkdir -p "$RUNTIME_DIR"
+
+	json_init
+	json_add_string server "$server"
+	json_add_int server_port "$server_port"
+	json_add_string password "$password"
+	json_add_string method "$method"
+	json_add_int timeout "$timeout"
+	json_add_boolean fast_open "$(bool_value "$fast_open")"
+	json_add_string mode "$mode"
+
+	case "$obfs_mode" in
+		http|tls)
+			local plugin_opts
+			plugin_opts="obfs=$obfs_mode"
+			[ -n "$obfs_host" ] && plugin_opts="${plugin_opts};obfs-host=${obfs_host}"
+			json_add_string plugin "obfs-server"
+			json_add_string plugin_opts "$plugin_opts"
+			;;
+	esac
+
+	json_dump > "$RUNTIME_CONFIG"
+	chmod 600 "$RUNTIME_CONFIG"
+}
+
+start_service() {
+	local enabled log_level
+
+	config_load mio
+	config_get_bool enabled "$GLOBAL_SECTION" enabled 0
+	config_get log_level "$GLOBAL_SECTION" log_level "$LOG_LEVEL"
+
+	if [ "$enabled" -ne 1 ]; then
+		log "Service disabled"
+		return 0
+	fi
+
+	if [ ! -x "$PROG" ]; then
+		log "ssserver not found, please install shadowsocks-rust-ssserver"
+		return 1
+	fi
+
+	case "$log_level" in
+		error|warn|info|debug|trace)
+			;;
+		*)
+			log "Invalid log_level: $log_level"
+			log_level="info"
+			;;
+	esac
+
+	LOG_LEVEL="$log_level"
+
+	build_runtime_config "$SERVER_SECTION" || return 1
+
+	log "Starting Mio"
+
+	procd_open_instance mio
+	procd_set_param command "$PROG" -c "$RUNTIME_CONFIG"
+	procd_set_param env RUST_LOG="$LOG_LEVEL" RUST_LOG_STYLE="never"
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param respawn
+	procd_set_param file "$RUNTIME_CONFIG"
+	procd_close_instance
+
+	log "Mio started"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "mio"
+}
+
+stop_service() {
+	log "Stopping Mio"
+}

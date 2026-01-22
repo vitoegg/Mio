@@ -1,0 +1,65 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import { popen } from 'fs';
+
+const methods = {
+	version: {
+		call: function() {
+			let process;
+			let app = '';
+			let plugin = '';
+
+			// Get luci-app-mio version
+			if (system('command -v opkg') == 0) {
+				process = popen('opkg list-installed luci-app-mio | awk "{print $3}"');
+				if (process) {
+					app = trim(process.read('all'));
+					process.close();
+				}
+			} else if (system('command -v apk') == 0) {
+				process = popen('apk list -I luci-app-mio 2>/dev/null | awk \'{print $1; exit}\'');
+				if (process) {
+					const line = trim(process.read('all'));
+					if (line) {
+						const prefix = 'luci-app-mio-';
+						app = line.replace(prefix, '');
+					}
+					process.close();
+				}
+			}
+
+			// Get ssserver version
+			let ssserver = '';
+			process = popen('command -v ssserver >/dev/null 2>&1 && ssserver --version 2>&1 | head -n1');
+			if (process) {
+				ssserver = trim(process.read('all'));
+				process.close();
+			}
+
+			// Get obfs-server version
+			process = popen('command -v obfs-server >/dev/null 2>&1 && obfs-server -v 2>/dev/null | awk \'/^simple-obfs/{print $0; exit}\'');
+			if (process) {
+				plugin = trim(process.read('all'));
+				process.close();
+			}
+
+			return { app: app, ssserver: ssserver, obfs: plugin };
+		}
+	},
+
+	log: {
+		call: function() {
+			let logdata = '';
+			let process = popen('logread 2>/dev/null | grep -i -e mio -e ssserver -e shadowsocks | tail -n 50');
+			if (process) {
+				logdata = trim(process.read('all'));
+				process.close();
+			}
+			return { log: logdata };
+		}
+	}
+};
+
+return { 'luci.mio': methods };

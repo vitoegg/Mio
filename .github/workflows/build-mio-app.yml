@@ -1,0 +1,141 @@
+name: Build Mio App
+run-name: Build Mio ${{ github.ref_name }} 
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build:
+    name: Building Mio for x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Mio version
+        id: version
+        run: |
+          APP_VERSION="v$(awk -F':=' '/^PKG_VERSION:=/{print $2}' luci-app-mio/Makefile | tr -d ' ')"
+          
+          if [ -z "${APP_VERSION}" ] || [ "${APP_VERSION}" = "v" ]; then
+            echo "Failed to get APP_VERSION from Makefile"
+            exit 1
+          fi
+          
+          echo "APP_VERSION=${APP_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using app version: ${APP_VERSION}"
+
+      - name: Setup OpenWrt SDK
+        run: |
+          set -euo pipefail
+          
+          SDK_URL="https://downloads.openwrt.org/releases/23.05.5/targets/x86/64/openwrt-sdk-23.05.5-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+          
+          echo "Downloading SDK..."
+          curl -fsSL -o sdk.tar.xz "${SDK_URL}"
+          
+          echo "Extracting SDK..."
+          tar -xf sdk.tar.xz
+          mv openwrt-sdk-* openwrt-sdk
+          
+          mkdir -p openwrt-sdk/package
+
+      - name: Setup Feeds
+        run: |
+          cd openwrt-sdk
+          
+          # Update all feeds to get dependencies
+          ./scripts/feeds update -a
+          
+          # Install required dependencies for luci-base
+          ./scripts/feeds install luci-base
+
+      - name: Copy Package Source
+        run: |
+          cp -r luci-app-mio openwrt-sdk/package/
+
+      - name: Build Packages
+        run: |
+          cd openwrt-sdk
+          cat >> .config <<'EOF'
+          CONFIG_PACKAGE_luci-app-mio=y
+          EOF
+          make defconfig
+          
+          # Build luci-app-mio package (single thread for clear error output)
+          make package/luci-app-mio/compile V=s -j1 || { echo "luci-app-mio build failed"; exit 1; }
+          
+          mkdir -p ../artifacts
+          find bin/packages -name "luci-app-mio*.ipk" -exec cp {} ../artifacts/ \;
+          
+          ls -la ../artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipk-x86_64
+          path: artifacts/*.ipk
+
+  release:
+    name: Create Release Message
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get Mio version
+        id: version
+        run: |
+          APP_VERSION="v$(awk -F':=' '/^PKG_VERSION:=/{print $2}' luci-app-mio/Makefile | tr -d ' ')"
+          echo "APP_VERSION=${APP_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Organize release information
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Mio (${{ steps.version.outputs.APP_VERSION }})
+          tag_name: ${{ github.ref_name }}
+          body: |
+            🚀 🚀 🚀 
+            A simple LuCI application for managing Shadowsocks servers, with support for Obfs plugins.
+            
+            ### Installation
+            
+            ```bash
+            opkg install luci-app-mio_*.ipk
+            ```
+          files: |
+            artifacts/*.ipk
+          draft: false
+          prerelease: false
+
+  cleanup:
+    name: Cleanup Old Runs
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 1

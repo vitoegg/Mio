@@ -1,0 +1,17 @@
+{
+    "admin/services/mio": {
+        "title": "Mio",
+        "action": {
+            "type": "view",
+            "path": "mio/config"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-mio"
+            ],
+            "uci": {
+                "mio": true
+            }
+        }
+    }
+}

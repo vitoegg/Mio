@@ -10,39 +10,48 @@ const methods = {
 			let process;
 			let app = '';
 			let plugin = '';
+			let line = '';
+			let cmd = '';
 
 			// Get luci-app-mio version
-			if (system('command -v opkg') == 0) {
-				process = popen('opkg list-installed luci-app-mio | awk "{print $3}"');
+			if (system('command -v apk >/dev/null 2>&1') == 0) {
+				cmd = 'apk list -I luci-app-mio 2>/dev/null';
+			} else if (system('command -v opkg >/dev/null 2>&1') == 0) {
+				cmd = 'opkg list-installed luci-app-mio 2>/dev/null';
+			}
+
+			if (cmd) {
+				process = popen(cmd);
 				if (process) {
-					app = trim(process.read('all'));
+					line = trim(process.read('all') || '');
 					process.close();
 				}
-			} else if (system('command -v apk') == 0) {
-				process = popen('apk list -I luci-app-mio 2>/dev/null | awk \'{print $1; exit}\'');
-				if (process) {
-					const line = trim(process.read('all'));
-					if (line) {
-						const prefix = 'luci-app-mio-';
-						app = line.replace(prefix, '');
-					}
-					process.close();
-				}
+			}
+
+			// Extract version number (e.g., "0.0.2" from "luci-app-mio - 0.0.2")
+			let m = match(line, /([0-9]+\.[0-9]+\.?[0-9]*)/);
+			if (m) {
+				app = m[1];
 			}
 
 			// Get ssserver version
 			let ssserver = '';
-			process = popen('command -v ssserver >/dev/null 2>&1 && ssserver --version 2>&1 | head -n1');
+			process = popen('ssserver --version 2>&1');
 			if (process) {
-				ssserver = trim(process.read('all'));
+				ssserver = trim(process.read('all') || '');
 				process.close();
 			}
 
 			// Get obfs-server version
-			process = popen('command -v obfs-server >/dev/null 2>&1 && obfs-server -v 2>/dev/null | awk \'/^simple-obfs/{print $0; exit}\'');
+			process = popen('obfs-server -v 2>&1');
 			if (process) {
-				plugin = trim(process.read('all'));
+				let output = trim(process.read('all') || '');
 				process.close();
+				// Only take first line "simple-obfs 0.0.5"
+				let lines = split(output, '\n');
+				if (length(lines) > 0) {
+					plugin = lines[0];
+				}
 			}
 
 			return { app: app, ssserver: ssserver, obfs: plugin };
@@ -52,9 +61,10 @@ const methods = {
 	log: {
 		call: function() {
 			let logdata = '';
-			let process = popen('logread 2>/dev/null | grep -i -e mio -e ssserver -e shadowsocks | tail -n 50');
+			// Use word boundary \b to avoid matching "MMIO" when searching for "mio"
+			let process = popen("logread 2>/dev/null | grep -E '\\bmio\\b|ssserver|shadowsocks' | tail -n 50");
 			if (process) {
-				logdata = trim(process.read('all'));
+				logdata = trim(process.read('all') || '');
 				process.close();
 			}
 			return { log: logdata };

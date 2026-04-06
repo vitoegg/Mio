@@ -1,6 +1,6 @@
 # Mio
 
-A LuCI application for managing Shadowsocks-Rust server on OpenWrt.
+A LuCI app to manage the Shadowsocks-Rust server on OpenWrt. Requires OpenWrt 23.05+.
 
 ## Acknowledgments
 

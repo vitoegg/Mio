@@ -1,5 +1,15 @@
 #!/bin/sh
 
+# Check minimum OpenWrt version (requires 23.05+)
+MIN_VERSION="23"
+. /etc/openwrt_release 2>/dev/null
+CURRENT_VERSION=$(echo "$DISTRIB_RELEASE" | cut -d'.' -f1)
+
+if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" -lt "$MIN_VERSION" ] 2>/dev/null; then
+	logger -t "luci-app-mio" "ERROR: Requires OpenWrt/ImmortalWrt 23.05 or later. Current: $DISTRIB_RELEASE"
+	echo "luci-app-mio: Requires OpenWrt/ImmortalWrt 23.05 or later." >&2
+fi
+
 [ -f "/etc/config/ucitrack" ] && {
 uci -q batch <<-EOF >/dev/null
 	delete ucitrack.@mio[-1]

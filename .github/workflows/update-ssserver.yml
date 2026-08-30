@@ -1,0 +1,150 @@
+name: Update SSServer
+
+on:
+  schedule:
+    - cron: '27 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: mio-master-writes
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Check and Update shadowsocks-rust-ssserver
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAKEFILE_PATH: shadowsocks-rust-ssserver/Makefile
+      UPSTREAM_REPO: shadowsocks/shadowsocks-rust
+      TARGET_BRANCH: master
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Update ssserver Makefile
+        run: |
+          set -euo pipefail
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "工作树或暂存区不干净，拒绝更新" >&2
+            exit 1
+          fi
+
+          read -r name_fields version_fields hash_fields < <(awk '
+            /^[[:space:]]*PKG_NAME:=/ { name++ }
+            /^[[:space:]]*PKG_VERSION:=/ { version++ }
+            /^[[:space:]]*PKG_HASH:=/ { hash++ }
+            END { print name + 0, version + 0, hash + 0 }
+          ' "${MAKEFILE_PATH}")
+
+          if [ "${name_fields}" -ne 1 ] || [ "${version_fields}" -ne 1 ] || [ "${hash_fields}" -ne 1 ]; then
+            echo "Makefile 必须且只能包含一个 PKG_NAME、PKG_VERSION 和 PKG_HASH" >&2
+            exit 1
+          fi
+
+          pkg_name="$(awk -F':=' '/^[[:space:]]*PKG_NAME:=/{print $2; exit}' "${MAKEFILE_PATH}" | tr -d ' \t\r\n')"
+          current_version="$(awk -F':=' '/^[[:space:]]*PKG_VERSION:=/{print $2; exit}' "${MAKEFILE_PATH}" | tr -d ' \t\r\n')"
+          current_hash="$(awk -F':=' '/^[[:space:]]*PKG_HASH:=/{print $2; exit}' "${MAKEFILE_PATH}" | tr -d ' \t\r\n')"
+
+          if [ "${pkg_name}" != "shadowsocks-rust-ssserver" ] || [ -z "${current_version}" ] || [ -z "${current_hash}" ]; then
+            echo "目标 Makefile 内容不符合预期" >&2
+            exit 1
+          fi
+
+          release_api="https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest"
+          release_info="$(curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${release_api}")"
+          latest_tag="$(printf '%s' "${release_info}" | jq -er '.tag_name')"
+
+          if [[ ! "${latest_tag}" =~ ^v[0-9A-Za-z][0-9A-Za-z._+-]*$ ]]; then
+            echo "上游 tag 格式不符合预期: ${latest_tag}" >&2
+            exit 1
+          fi
+
+          pkg_version="${latest_tag#v}"
+          asset_name="shadowsocks-v${pkg_version}.x86_64-unknown-linux-musl.tar.xz"
+          sha_url="https://github.com/${UPSTREAM_REPO}/releases/download/${latest_tag}/${asset_name}.sha256"
+          pkg_hash="$(curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "${sha_url}" | awk 'NF {print $1; exit}')"
+
+          if [[ ! "${pkg_hash}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "上游资产 SHA256 格式不符合预期" >&2
+            exit 1
+          fi
+
+          echo "当前版本: v${current_version}"
+          echo "上游版本: ${latest_tag}"
+
+          if [ "${current_version}" = "${pkg_version}" ] && [ "${current_hash}" = "${pkg_hash}" ]; then
+            echo "版本与 HASH 均相同，无需更新"
+            exit 0
+          fi
+
+          tmp_file="$(mktemp "${MAKEFILE_PATH}.tmp.XXXXXX")"
+          cleanup_tmp() {
+            rm -f "${tmp_file}"
+          }
+          trap cleanup_tmp EXIT HUP INT TERM
+
+          sed -E \
+            -e "s#^([[:space:]]*PKG_VERSION:=).*#\\1${pkg_version}#" \
+            -e "s#^([[:space:]]*PKG_HASH:=).*#\\1${pkg_hash}#" \
+            "${MAKEFILE_PATH}" > "${tmp_file}"
+          chmod 0644 "${tmp_file}"
+
+          candidate_version="$(awk -F':=' '/^[[:space:]]*PKG_VERSION:=/{print $2; exit}' "${tmp_file}" | tr -d ' \t\r\n')"
+          candidate_hash="$(awk -F':=' '/^[[:space:]]*PKG_HASH:=/{print $2; exit}' "${tmp_file}" | tr -d ' \t\r\n')"
+          if [ "${candidate_version}" != "${pkg_version}" ] || [ "${candidate_hash}" != "${pkg_hash}" ]; then
+            echo "候选 Makefile 校验失败" >&2
+            exit 1
+          fi
+
+          mv "${tmp_file}" "${MAKEFILE_PATH}"
+          trap - EXIT HUP INT TERM
+
+          changed_files="$(git diff --name-only --)"
+          if [ "${changed_files}" != "${MAKEFILE_PATH}" ] || ! git diff --cached --quiet --; then
+            echo "检测到目标文件之外的变更，拒绝提交" >&2
+            exit 1
+          fi
+
+          git diff --check -- "${MAKEFILE_PATH}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -- "${MAKEFILE_PATH}"
+
+          staged_files="$(git diff --cached --name-only --)"
+          untracked_files="$(git ls-files --others --exclude-standard)"
+          if [ "${staged_files}" != "${MAKEFILE_PATH}" ] || ! git diff --quiet -- || [ -n "${untracked_files}" ]; then
+            echo "暂存结果不符合预期，拒绝提交" >&2
+            exit 1
+          fi
+
+          git diff --cached --check
+          git commit -m "chore: update shadowsocks-rust-ssserver to ${latest_tag}"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+      - name: Delete Workflow Runs
+        if: always()
+        uses: ophub/delete-releases-workflows@v0.1.0
+        with:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          out_log: false
+          delete_releases: false
+          delete_tags: false
+          delete_workflows: true
+          workflows_keep_day: 0

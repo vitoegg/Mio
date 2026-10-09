@@ -1,0 +1,59 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-mio\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Snell server on OpenWrt, helping you access services on your home network from the public internet."
+msgstr "OpenWrt 上的 Snell 服务器，帮助您从公网访问家庭网络中的服务。"
+
+msgid "App Version"
+msgstr "应用版本"
+
+msgid "Snell Version"
+msgstr "Snell 版本"
+
+msgid "Running Status"
+msgstr "运行状态"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Not Running"
+msgstr "已停止"
+
+msgid "View"
+msgstr "查看"
+
+msgid "Snell Service"
+msgstr "Snell 服务"
+
+msgid "Allow Through Firewall"
+msgstr "防火墙放行"
+
+msgid "Password is required"
+msgstr "请输入密码"
+
+msgid "Password must not have leading or trailing whitespace or control characters."
+msgstr "密码首尾不能有空白，且不能包含控制字符。"
+
+msgid "Mio Log"
+msgstr "Mio 日志"
+
+msgid "Loading..."
+msgstr "加载中..."
+
+msgid "No log data"
+msgstr "暂无相关日志"
+
+msgid "Unable to load log data: %s"
+msgstr "无法读取日志：%s"
+
+msgid "Clear"
+msgstr "清空"
+
+msgid "Unable to clear log data: %s"
+msgstr "无法清空日志：%s"

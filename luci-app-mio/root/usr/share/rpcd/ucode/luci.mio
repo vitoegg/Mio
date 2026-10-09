@@ -1,0 +1,33 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import { popen } from 'fs';
+
+function command_output(command) {
+	let process = popen(command);
+	if (!process)
+		return '';
+
+	let output = trim(process.read('all') || '');
+	return process.close() === 0 ? output : '';
+}
+
+const methods = {
+	version: {
+		call: function() {
+			let app = match(command_output('apk list -I luci-app-mio 2>/dev/null'),
+				/^luci-app-mio-([0-9][^[:space:]]*)/);
+			// snell-server prints its version as a log line: "... <NOTIFY> snell-server v5.0.1 (build date)".
+			let core = match(command_output('snell-server -v 2>&1'),
+				/snell-server v([0-9][^[:space:]]*)/);
+
+			return {
+				app: app ? app[1] : '',
+				snell: core ? core[1] : ''
+			};
+		}
+	}
+};
+
+return { 'luci.mio': methods };

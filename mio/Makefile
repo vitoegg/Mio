@@ -7,7 +7,7 @@ PKG_RELEASE:=1
 # Built from src/ and released by .github/workflows/mio.yml, which then writes PKG_HASH.
 PKG_SOURCE:=mio-$(PKG_VERSION)-linux-amd64
 PKG_SOURCE_URL:=https://github.com/vitoegg/Mio/releases/download/v$(PKG_VERSION)
-PKG_HASH:=skip
+PKG_HASH:=9ab1b010fb65f94ae9058b8f2d0685baaed7aca2144792a1ed613c12f308921d
 
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=src/LICENSE

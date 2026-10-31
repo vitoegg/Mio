@@ -1,0 +1,84 @@
+name: Release-Mio
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      # A tag without a new PKG_VERSION in mio/Makefile builds nothing.
+      - name: Check Version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^PKG_VERSION:=//p' mio/Makefile)
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "::notice::v$version is already released; skipped"
+          elif [ "$GITHUB_REF_NAME" = "v$version" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::$GITHUB_REF_NAME is not v$version of mio/Makefile"
+            exit 1
+          fi
+
+      # The official build, checked against its sha256 in https://ziglang.org/download/index.json.
+      - name: Setup Zig
+        if: steps.version.outputs.build
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -sSfL -o zig.tar.xz https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz
+          echo "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026  zig.tar.xz" | sha256sum -c
+          tar -xJf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.17.0" >> "$GITHUB_PATH"
+
+      - name: Setup cargo-zigbuild
+        if: steps.version.outputs.build
+        run: cargo install --locked cargo-zigbuild@0.24.0
+
+      - name: Build
+        if: steps.version.outputs.build
+        working-directory: mio/src
+        run: |
+          MIO_VERSION=$GITHUB_REF_NAME cargo zigbuild --locked --release --target x86_64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/mio "$GITHUB_WORKSPACE/mio-${GITHUB_REF_NAME#v}-linux-amd64"
+
+      - name: Release
+        if: steps.version.outputs.build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" mio-*-linux-amd64 --title "$GITHUB_REF_NAME" --notes "Mio $GITHUB_REF_NAME"
+
+      # The build is not reproducible, so mio/Makefile gets the hash of the released binary afterwards.
+      - name: Pin Hash
+        if: steps.version.outputs.build
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          hash=$(sha256sum "mio-$version-linux-amd64" | cut -d' ' -f1)
+          git fetch --depth=1 origin master
+          git checkout -B master FETCH_HEAD
+          [ "$(sed -n 's/^PKG_VERSION:=//p' mio/Makefile)" = "$version" ] || { echo "::warning::master is past $version; PKG_HASH is left as is"; exit 0; }
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$hash/" mio/Makefile
+          git diff --quiet && exit 0
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "chore: Pin the mio $GITHUB_REF_NAME hash" -m "$hash  mio-$version-linux-amd64" mio/Makefile
+          git push origin master
+
+      # Keeps the newest 3 releases with their tags and the newest 6 runs of this workflow.
+      - name: Clean Up History
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[3:][].tagName' | xargs -r -n1 gh release delete --cleanup-tag --yes
+          gh run list --workflow mio.yml --limit 100 --json databaseId --jq '.[6:][].databaseId' | xargs -r -n1 gh run delete

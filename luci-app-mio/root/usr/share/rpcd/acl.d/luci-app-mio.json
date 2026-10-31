@@ -1,0 +1,41 @@
+{
+    "luci-app-mio": {
+        "description": "Grant UCI access for luci-app-mio",
+        "read": {
+            "file": {
+                "/tmp/log/mio.log": [
+                    "read"
+                ]
+            },
+            "ubus": {
+                "file": [
+                    "read"
+                ],
+                "rc": [
+                    "list"
+                ],
+                "luci.mio": [
+                    "version"
+                ]
+            },
+            "uci": [
+                "mio"
+            ]
+        },
+        "write": {
+            "file": {
+                "/tmp/log/mio.log": [
+                    "write"
+                ]
+            },
+            "ubus": {
+                "file": [
+                    "write"
+                ]
+            },
+            "uci": [
+                "mio"
+            ]
+        }
+    }
+}

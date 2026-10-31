@@ -1,0 +1,62 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-mio\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Shadowsocks server on OpenWrt, helping you access services on your home network from the public internet."
+msgstr "OpenWrt 上的 Shadowsocks 服务器，帮助您从公网访问家庭网络中的服务。"
+
+msgid "App Version"
+msgstr "应用版本"
+
+msgid "Core Version"
+msgstr "内核版本"
+
+msgid "Running Status"
+msgstr "运行状态"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Not Running"
+msgstr "已停止"
+
+msgid "View"
+msgstr "查看"
+
+msgid "Service"
+msgstr "服务"
+
+msgid "Cipher"
+msgstr "加密方式"
+
+msgid "Allow Through Firewall"
+msgstr "防火墙放行"
+
+msgid "Password is required"
+msgstr "请输入密码"
+
+msgid "The key must be %d bytes in base64, e.g. from: openssl rand -base64 %d"
+msgstr "密钥须为 %d 字节的 Base64 编码，可用 openssl rand -base64 %d 生成"
+
+msgid "Mio Log"
+msgstr "Mio 日志"
+
+msgid "Loading..."
+msgstr "加载中..."
+
+msgid "No log data"
+msgstr "暂无相关日志"
+
+msgid "Unable to load log data: %s"
+msgstr "无法读取日志：%s"
+
+msgid "Clear"
+msgstr "清空"
+
+msgid "Unable to clear log data: %s"
+msgstr "无法清空日志：%s"

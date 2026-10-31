@@ -1,0 +1,7 @@
+config mio 'main'
+	option enabled '0'
+	option port '6160'
+	option password ''
+	option cipher '2022-blake3-aes-128-gcm'
+	option open_firewall '0'
+	option log_level 'warning'

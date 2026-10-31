@@ -1,0 +1,5 @@
+#!/bin/sh
+
+chmod 600 /etc/config/mio
+
+exit 0
